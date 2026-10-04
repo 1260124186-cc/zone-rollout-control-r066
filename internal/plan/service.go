@@ -153,6 +153,18 @@ func (s *Service) Complete(
 		if current.Version != expectedVersion {
 			return versionConflict(planID, expectedVersion, current.Version)
 		}
+		// Keep the historical conflict for non-active plans (drafts and
+		// already completed plans) unchanged; the completion gate applies
+		// only to active plans attempting the transition.
+		if current.State == domain.PlanActive {
+			evidence, err := completionEvidence(state, current)
+			if err != nil {
+				return err
+			}
+			if err := domain.ValidateCompletionGate(evidence); err != nil {
+				return err
+			}
+		}
 		now := s.clock.Now().UTC()
 		if err := domain.CompletePlan(&current, now); err != nil {
 			return err
@@ -289,4 +301,24 @@ func versionConflict(id string, expected uint64, actual uint64) *domain.DomainEr
 		"expected": expected,
 		"actual":   actual,
 	})
+}
+
+// completionEvidence reads the plan, its thresholds and latest assessment from
+// a single state version handed to it by the store transaction. Under the
+// store's write serialization the gate therefore cannot mix thresholds from
+// one plan version with an assessment from another.
+func completionEvidence(state *domain.State, plan domain.RolloutPlan) (domain.CompletionGateEvidence, error) {
+	evidence := domain.CompletionGateEvidence{Plan: plan}
+	if plan.LatestAssessmentID == "" {
+		return evidence, nil
+	}
+	assessment, ok := state.Assessments[plan.LatestAssessmentID]
+	if !ok {
+		return domain.CompletionGateEvidence{}, domain.NewError(domain.CodeStorageFailure, "plan references a missing assessment", map[string]any{
+			"plan_id":       plan.ID,
+			"assessment_id": plan.LatestAssessmentID,
+		})
+	}
+	evidence.Assessment = &assessment
+	return evidence, nil
 }

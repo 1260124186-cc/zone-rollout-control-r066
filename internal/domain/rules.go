@@ -40,6 +40,45 @@ func CompletePlan(plan *RolloutPlan, now time.Time) error {
 	return nil
 }
 
+// CompletionGateEvidence bundles the plan snapshot with its latest assessment
+// as read from one consistent state version. A nil assessment means the plan
+// has never been assessed.
+type CompletionGateEvidence struct {
+	Plan       RolloutPlan
+	Assessment *RolloutAssessment
+}
+
+// ValidateCompletionGate enforces the completion precondition: the plan's
+// latest assessment must exist, must reference the plan's current revision,
+// and its verdict must be consistent. Each violation returns a distinct,
+// stable error code so callers can tell the reasons apart.
+func ValidateCompletionGate(evidence CompletionGateEvidence) error {
+	plan := evidence.Plan
+	if evidence.Assessment == nil {
+		return NewError(CodeCompletionNotAssessed, "plan requires a consistency assessment before completion", map[string]any{
+			"plan_id": plan.ID,
+		})
+	}
+	assessment := evidence.Assessment
+	if assessment.RevisionID != plan.LatestRevisionID {
+		return NewError(CodeCompletionRevisionStale, "latest assessment does not reference the current revision", map[string]any{
+			"plan_id":             plan.ID,
+			"assessment_id":       assessment.ID,
+			"assessment_revision": assessment.RevisionID,
+			"current_revision":    plan.LatestRevisionID,
+		})
+	}
+	if assessment.Verdict != VerdictConsistent {
+		return NewError(CodeCompletionNotConsistent, "latest assessment verdict is not consistent", map[string]any{
+			"plan_id":       plan.ID,
+			"assessment_id": assessment.ID,
+			"verdict":       assessment.Verdict,
+			"reasons":       append([]string(nil), assessment.Reasons...),
+		})
+	}
+	return nil
+}
+
 func LeaseFingerprint(planID string, input LeaseInput) string {
 	payload := fmt.Sprintf(
 		"%s|%s|%s|%d|%d",

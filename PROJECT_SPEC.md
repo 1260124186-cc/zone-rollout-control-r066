@@ -92,8 +92,14 @@ draft --activate--> active --complete--> completed
 
 - 只有 `draft` 可以激活。
 - 只有 `active` 可以完成。
+- 完成必须通过判定门禁：计划的最新判定必须存在、其 `revision_id` 必须等于计划的 `latest_revision_id`、且结论为 `consistent`。门禁不满足时返回可区分的稳定错误代码：
+  - `completion_assessment_missing`
+  - `completion_assessment_revision_stale`
+  - `completion_assessment_not_consistent`
+- 对已结束计划重复完成仍返回 `invalid_state` 冲突，不受门禁影响。
 - 激活后不能继续添加区域版本。
 - 激活和完成需要匹配当前版本。
+- 完成事务在同一份锁内状态快照上读取计划阈值与最新判定，并发下二者必须来自同一计划版本。
 
 ### 节点与租约生命周期
 
@@ -160,9 +166,9 @@ ready --lease--> leased --report--> ready
 3. 存储层在锁内创建计划或版本，并原子替换状态快照。
 4. 返回带版本的新聚合。
 
-成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加。
+成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加；完成前必须存在引用当前修订且结论为 `consistent` 的最新判定。
 
-失败行为：重复序列号、非法名称、缺少版本、版本冲突或非法迁移不会修改状态。
+失败行为：重复序列号、非法名称、缺少版本、版本冲突、非法迁移或判定门禁不满足（缺少判定、判定引用旧修订、判定结论非一致）不会修改状态。
 
 ### W2 节点领取租约
 
