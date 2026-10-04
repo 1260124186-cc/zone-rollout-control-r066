@@ -153,8 +153,18 @@ func (s *Service) Complete(
 		if current.Version != expectedVersion {
 			return versionConflict(planID, expectedVersion, current.Version)
 		}
+		var latestAssessment *domain.RolloutAssessment
+		if current.LatestAssessmentID != "" {
+			assessment, found := state.Assessments[current.LatestAssessmentID]
+			if !found {
+				return domain.NewError(domain.CodeStorageFailure, "plan references a missing assessment", map[string]any{
+					"assessment_id": current.LatestAssessmentID,
+				})
+			}
+			latestAssessment = &assessment
+		}
 		now := s.clock.Now().UTC()
-		if err := domain.CompletePlan(&current, now); err != nil {
+		if err := domain.CompletePlan(&current, latestAssessment, now); err != nil {
 			return err
 		}
 		state.Plans[planID] = current

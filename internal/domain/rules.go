@@ -27,11 +27,32 @@ func ActivatePlan(plan *RolloutPlan, now time.Time) error {
 	return nil
 }
 
-func CompletePlan(plan *RolloutPlan, now time.Time) error {
+func CompletePlan(plan *RolloutPlan, latestAssessment *RolloutAssessment, now time.Time) error {
 	if plan.State != PlanActive {
 		return InvalidState("plan can be completed only from active", map[string]any{
 			"plan_id": plan.ID,
 			"state":   plan.State,
+		})
+	}
+	if latestAssessment == nil {
+		return NewError(CodeAssessmentRequired, "plan has no assessment proving its thresholds", map[string]any{
+			"plan_id": plan.ID,
+		})
+	}
+	if latestAssessment.RevisionID != plan.LatestRevisionID {
+		return NewError(CodeAssessmentStale, "latest assessment does not reference the current revision", map[string]any{
+			"plan_id":           plan.ID,
+			"assessment_id":     latestAssessment.ID,
+			"assessed_revision": latestAssessment.RevisionID,
+			"current_revision":  plan.LatestRevisionID,
+		})
+	}
+	if latestAssessment.Verdict != VerdictConsistent {
+		return NewError(CodeAssessmentRejected, "latest assessment did not conclude consistent", map[string]any{
+			"plan_id":       plan.ID,
+			"assessment_id": latestAssessment.ID,
+			"verdict":       latestAssessment.Verdict,
+			"reasons":       latestAssessment.Reasons,
 		})
 	}
 	plan.State = PlanCompleted

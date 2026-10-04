@@ -94,6 +94,8 @@ draft --activate--> active --complete--> completed
 - 只有 `active` 可以完成。
 - 激活后不能继续添加区域版本。
 - 激活和完成需要匹配当前版本。
+- 完成要求计划的最新判定存在、引用当前修订且结论为 `consistent`，版本校验与判定读取在同一事务内完成。
+- 完成门禁按失败原因分别返回 `assessment_required`（缺少最新判定）、`assessment_stale`（判定未引用当前修订）或 `assessment_not_consistent`（结论非 `consistent`）。
 
 ### 节点与租约生命周期
 
@@ -162,7 +164,7 @@ ready --lease--> leased --report--> ready
 
 成功行为：计划按 `draft -> active -> completed` 迁移，区域版本在激活前可追加。
 
-失败行为：重复序列号、非法名称、缺少版本、版本冲突或非法迁移不会修改状态。
+失败行为：重复序列号、非法名称、缺少版本、版本冲突、非法迁移或不满足完成门禁（无判定、判定过期、结论非一致）不会修改状态。
 
 ### W2 节点领取租约
 
@@ -278,7 +280,7 @@ ready --lease--> leased --report--> ready
 
 `.project-runtime.json` 的 `testing` 固定为 `deferred`，不生成单元测试、夹具或浏览器测试。交付前使用 `cmd/workflowprobe` 启动真实本机服务并在随机端口完成：
 
-1. 计划创建、版本追加、激活、完成和非法重复迁移。
+1. 计划创建、版本追加、激活、完成门禁、完成和非法重复迁移。
 2. 节点分配、租约唯一性、幂等重放和无可用节点冲突。
 3. 探针首写、同键重放、同键异载荷冲突和释放冲突。
 4. 一致性通过、审核触发、最新结果查询和幂等重放。
